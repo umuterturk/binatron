@@ -36,4 +36,9 @@ public class PitchForkInstance {
         return pitchFork.at(pitchFork.tradePoint2, now);
 
     }
+
+    @Override
+    public String toString() {
+        return "highest=" + high() + " high=" + at(0.25) + " mid=" + mid() + " low=" + at(-0.25) + " lowest=" + low();
+    }
 }

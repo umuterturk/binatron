@@ -34,12 +34,12 @@
     },
     {
       "name": "trading.from",
-      "type": "java.lang.String",
+      "type": "com.hevi.binatron.Asset",
       "description": "Description for trading.from."
     },
     {
       "name": "trading.to",
-      "type": "java.lang.String",
+      "type": "com.hevi.binatron.Asset",
       "description": "Description for trading.to."
     }
   ]

@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.ConstructorBinding;
 import org.springframework.context.annotation.PropertySource;
 
-@PropertySource("classpath:apikeys.properties")
+@PropertySource("classpath:application-local.properties")
 @ConfigurationProperties(prefix = "binance")
 @ConstructorBinding
 public class BinanceConfigurationProperties {

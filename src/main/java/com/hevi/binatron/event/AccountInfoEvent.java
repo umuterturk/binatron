@@ -1,19 +1,20 @@
 package com.hevi.binatron.event;
 
+import com.hevi.binatron.Asset;
 import org.springframework.context.ApplicationEvent;
 
 public class AccountInfoEvent extends ApplicationEvent {
-    String assetType;
+    Asset asset;
     String assetBalance;
 
-    public AccountInfoEvent(Object source, String assetType, String assetBalance) {
+    public AccountInfoEvent(Object source, Asset asset, String assetBalance) {
         super(source);
-        this.assetType = assetType;
+        this.asset = asset;
         this.assetBalance = assetBalance;
     }
 
     @Override
     public String toString() {
-        return "You have free " + assetBalance + ' ' + assetType;
+        return "You have free " + assetBalance + ' ' + asset.name();
     }
 }

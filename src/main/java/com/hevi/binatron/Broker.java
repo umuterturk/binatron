@@ -67,9 +67,9 @@ public class Broker {
             double currentPrice = Double.parseDouble(currentPriceStr);
             if (currentPrice > pitchForkInstance.high()) {
                 currentArea = Area.HIGHEST;
-            } else if (currentPrice > pitchForkInstance.at(0.382)) {
+            } else if (currentPrice > pitchForkInstance.at(0.25)) {
                 currentArea = Area.HIGH;
-            } else if (currentPrice > pitchForkInstance.at(-0.382)) {
+            } else if (currentPrice > pitchForkInstance.at(-0.25)) {
                 currentArea = Area.MID;
             } else if (currentPrice > pitchForkInstance.low()) {
                 currentArea = Area.LOW;
@@ -106,9 +106,10 @@ public class Broker {
             }
 
             TrendAction trendAction = TrendAction.NONE;
-            if (tradeAction == TradeAction.SELL_HIGHEST) {
+           /* if (currentPrice > pitchForkInstance.at(1.382)) {
                 trendAction = TrendAction.TREND_BROKE_UPPER;
-            } else if (tradeAction == TradeAction.SELL_LOWEST) {
+            } else */
+            if (currentPrice < pitchForkInstance.at(-1.382)) {
                 trendAction = TrendAction.TREND_BROKE_LOWER;
             }
 

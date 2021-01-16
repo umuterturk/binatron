@@ -2,6 +2,7 @@ package com.hevi.binatron;
 
 import com.hevi.binatron.configuration.TelegramConfigurationProperties;
 import com.hevi.binatron.event.*;
+import com.hevi.binatron.toolbar.PitchForkInstance;
 import com.hevi.binatron.toolbar.TradePoint;
 import com.pengrad.telegrambot.ExceptionHandler;
 import com.pengrad.telegrambot.TelegramBot;
@@ -9,6 +10,8 @@ import com.pengrad.telegrambot.TelegramException;
 import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.Update;
 import com.pengrad.telegrambot.request.SendMessage;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.event.ApplicationEventMulticaster;
 import org.springframework.context.event.EventListener;
@@ -40,6 +43,10 @@ public class Bot implements UpdatesListener, ExceptionHandler {
     }
 
     State state = State.NONE;
+
+
+    @Autowired
+    PitchForkManager pitchForkManager;
 
     public Bot(TelegramBot telegramBot, ApplicationEventMulticaster simpleApplicationEventMulticaster, TelegramConfigurationProperties telegramConfigurationProperties) {
         this.simpleApplicationEventMulticaster = simpleApplicationEventMulticaster;
@@ -81,10 +88,19 @@ public class Bot implements UpdatesListener, ExceptionHandler {
 
     String readMessage(String message) {
         message = message.trim().strip();
-
-        if (message.startsWith("balance")) {
-            simpleApplicationEventMulticaster.multicastEvent(new BalanceRequestEvent(this, message.split(" ")[1].toUpperCase(Locale.ENGLISH)));
-            return "let me check";
+        if("pf?".equals(message)){
+            final PitchForkInstance pitchForkInstance = pitchForkManager.getPitchForkInstance();
+            if(pitchForkInstance == null) return "There is no pitchfork set, type 'pf' to set one.";
+            return pitchForkInstance.toString();
+        }
+        else if (message.startsWith("? ")) {
+            final Asset asset = new Asset(message.split(" ")[1]);
+            assetInfoRequest(asset);
+            return "let me check 24h  stats for " + asset;
+        } else if (StringUtils.startsWithIgnoreCase(message, "balance")) {
+            final Asset asset = new Asset(message.split(" ")[1]);
+            simpleApplicationEventMulticaster.multicastEvent(new BalanceRequestEvent(this, asset));
+            return "let me check your balance for " + asset;
         } else if ("start".equalsIgnoreCase(message)) {
             startApplication();
         } else if ("stop".equalsIgnoreCase(message)) {
@@ -120,7 +136,7 @@ public class Bot implements UpdatesListener, ExceptionHandler {
                     try {
                         TradePoint tp = new TradePoint(s[0], s[1]);
                         tradePoints.add(tp);
-                        return tradePoints.size()<3?"OK got it, waiting for the next":"OK you can 'end' now";
+                        return tradePoints.size() < 3 ? "OK got it, waiting for the next" : "OK you can 'end' now";
                     } catch (DateTimeParseException dateTimeParseException) {
                         return "your date must be something like 2007-12-03T10:15:30 but was " + s[0];
                     } catch (NumberFormatException numberFormatException) {
@@ -130,6 +146,10 @@ public class Bot implements UpdatesListener, ExceptionHandler {
             }
         }
         return null;
+    }
+
+    private void assetInfoRequest(Asset asset) {
+        simpleApplicationEventMulticaster.multicastEvent(new AssetInfoRequestEvent(this, asset));
     }
 
     private void stopApplication() {
@@ -170,5 +190,15 @@ public class Bot implements UpdatesListener, ExceptionHandler {
     @EventListener
     public void handleTradeLifecycleEvent(TradeLifecycleEvent lifecycleEvent) {
         sendMessage("Application state is now " + lifecycleEvent.getLifeCycleType().name());
+    }
+
+    @EventListener
+    public void handleInformativeMessageEvent(AssetInfoResponseEvent assetInfoResponseEvent) {
+        sendMessage(assetInfoResponseEvent.toString());
+    }
+
+    @EventListener
+    public void handleInformativeMessageEvent(InformativeMessageEvent informativeMessageEvent) {
+        sendMessage(informativeMessageEvent.getMessage());
     }
 }

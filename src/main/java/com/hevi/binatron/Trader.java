@@ -3,16 +3,15 @@ package com.hevi.binatron;
 import com.binance.api.client.BinanceApiRestClient;
 import com.binance.api.client.BinanceApiWebSocketClient;
 import com.binance.api.client.domain.account.*;
-import com.hevi.binatron.event.AccountInfoEvent;
-import com.hevi.binatron.event.BalanceRequestEvent;
-import com.hevi.binatron.event.OrderCompletedEvent;
-import com.hevi.binatron.event.TradeOrderEvent;
+import com.binance.api.client.domain.market.TickerStatistics;
+import com.binance.api.client.exception.BinanceApiException;
+import com.hevi.binatron.configuration.TradingSymbols;
+import com.hevi.binatron.event.*;
 import org.springframework.context.event.ApplicationEventMulticaster;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import java.util.Locale;
 
 @Component
 public class Trader {
@@ -26,10 +25,8 @@ public class Trader {
         }
     }
 
-    final String fromSymbol = "BNB";
-    final String toSymbol = "USDT";
-    final String compoundSymbol = (fromSymbol + toSymbol).toLowerCase(Locale.ENGLISH);
-
+    final
+    TradingSymbols tradingSymbols;
 
     Account account;
 
@@ -40,33 +37,38 @@ public class Trader {
     final ApplicationEventMulticaster simpleApplicationEventMulticaster;
 
 
-    public Trader(BinanceApiWebSocketClient binanceApiWebSocketClient, ApplicationEventMulticaster simpleApplicationEventMulticaster, BinanceApiRestClient binanceApiRestClient) {
+    public Trader(BinanceApiWebSocketClient binanceApiWebSocketClient, ApplicationEventMulticaster simpleApplicationEventMulticaster, BinanceApiRestClient binanceApiRestClient, TradingSymbols tradingSymbols) {
         this.binanceApiWebSocketClient = binanceApiWebSocketClient;
         this.simpleApplicationEventMulticaster = simpleApplicationEventMulticaster;
         this.binanceApiRestClient = binanceApiRestClient;
+        this.tradingSymbols = tradingSymbols;
     }
 
 
     @PostConstruct
     void init() {
         updateAccount();
-        System.out.println(account.getAssetBalance(fromSymbol));
-        multicastAccountInfo(fromSymbol);
-        multicastAccountInfo(toSymbol);
+        System.out.println(account.getAssetBalance(tradingSymbols.from().name()));
+        multicastAccountInfo(tradingSymbols.from());
+        multicastAccountInfo(tradingSymbols.to());
 
     }
 
-    private void multicastAccountInfo(String symbol) {
-        simpleApplicationEventMulticaster.multicastEvent(new AccountInfoEvent(this, symbol, account.getAssetBalance(symbol).getFree()));
+    private void multicastAccountInfo(Asset asset) {
+        simpleApplicationEventMulticaster.multicastEvent(new AccountInfoEvent(this, asset, getAssetBalance(asset).getFree()));
+    }
+
+    private AssetBalance getAssetBalance(Asset asset) {
+        return account.getAssetBalance(asset.name());
     }
 
     private void updateAccount() {
         account = binanceApiRestClient.getAccount();
     }
 
-    String getJustFree(String symbol) {
-        double aDouble = Double.parseDouble(account.getAssetBalance(symbol).getFree()) * 0.995;
-        return Double.toString(aDouble);
+    String getJustFree(Asset asset) {
+        double aDouble = Double.parseDouble(getAssetBalance(asset).getFree()) * 0.995;
+        return String.format("%.2f", aDouble);
     }
 
     private OrderResult processResponse(NewOrderResponse orderResponse) {
@@ -83,29 +85,52 @@ public class Trader {
     }
 
     private OrderResult order(NewOrder newOrder) {
-        return new OrderResult(0, 0);
-//        return processResponse(binanceApiRestClient.newOrder(newOrder));
+//        return new OrderResult(0, 0);
+        return processResponse(binanceApiRestClient.newOrder(newOrder));
     }
 
-    private void marketBuyAll() {
+    private void marketBuyAll(TradeOrderEvent tradeOrderEvent) {
+        final Asset freeAsset = tradingSymbols.to();
+        try {
+            final String justFree = getJustFree(freeAsset);
+            multicastInformativeMessage("Trying to buy your " + justFree + " " + freeAsset + " price of " + tradeOrderEvent.getPrice());
+            OrderResult orderResult = order(NewOrder.marketBuy(tradingSymbols.compound(), justFree));
 
-        OrderResult orderResult = order(NewOrder.marketBuy(compoundSymbol, getJustFree(fromSymbol)));
+            OrderCompletedEvent orderCompletedEvent = new OrderCompletedEvent(this, tradingSymbols.compound(), orderResult.quantity.toString(), orderResult.sum.toString(), "BUY");
+            simpleApplicationEventMulticaster.multicastEvent(orderCompletedEvent);
+            updateAccount();
 
-        OrderCompletedEvent orderCompletedEvent = new OrderCompletedEvent(this, compoundSymbol, orderResult.quantity.toString(), orderResult.sum.toString(), "BUY");
-        simpleApplicationEventMulticaster.multicastEvent(orderCompletedEvent);
-        updateAccount();
-        multicastAccountInfo(fromSymbol);
-        multicastAccountInfo(toSymbol);
+        } catch (Exception e) {
+            multicastInformativeMessage("Couldn't buy: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            multicastAccountInfo(freeAsset);
+            multicastAccountInfo(tradingSymbols.to());
+        }
     }
 
-    private void marketSellAll() {
-        OrderResult orderResult = order(NewOrder.marketSell(compoundSymbol, getJustFree(fromSymbol)));
+    private void multicastInformativeMessage(String s) {
+        simpleApplicationEventMulticaster.multicastEvent(new InformativeMessageEvent(this, s));
+    }
 
-        OrderCompletedEvent orderCompletedEvent = new OrderCompletedEvent(this, compoundSymbol, orderResult.quantity.toString(), orderResult.sum.toString(), "SELL");
-        simpleApplicationEventMulticaster.multicastEvent(orderCompletedEvent);
-        updateAccount();
-        multicastAccountInfo(fromSymbol);
-        multicastAccountInfo(toSymbol);
+    private void marketSellAll(TradeOrderEvent tradeOrderEvent) {
+        final Asset freeAsset = tradingSymbols.from();
+        try {
+            final String justFree = getJustFree(freeAsset);
+            multicastInformativeMessage("Trying to sell your " + justFree + " " + freeAsset + " price of " + tradeOrderEvent.getPrice());
+            OrderResult orderResult = order(NewOrder.marketSell(tradingSymbols.compound(), justFree));
+
+            OrderCompletedEvent orderCompletedEvent = new OrderCompletedEvent(this, tradingSymbols.compound(), orderResult.quantity.toString(), orderResult.sum.toString(), "SELL");
+            simpleApplicationEventMulticaster.multicastEvent(orderCompletedEvent);
+            updateAccount();
+
+        } catch (Exception e) {
+            multicastInformativeMessage("Couldn't sell: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            multicastAccountInfo(freeAsset);
+            multicastAccountInfo(tradingSymbols.from());
+        }
     }
 
 
@@ -113,18 +138,33 @@ public class Trader {
     public void listen(TradeOrderEvent tradeOrderEvent) {
         final TradeOrderEvent.Action action = tradeOrderEvent.getAction();
         if (action == TradeOrderEvent.Action.BOUGHT) {
-            marketBuyAll();
+            marketBuyAll(tradeOrderEvent);
         } else if (action == TradeOrderEvent.Action.SOLD_UPPER || action == TradeOrderEvent.Action.SOLD_STOP_LOSS) {
-            marketSellAll();
+            marketSellAll(tradeOrderEvent);
         }
     }
 
 
     @EventListener
     public void listenBalance(BalanceRequestEvent balanceRequestEvent) {
-        final AssetBalance assetBalance = account.getAssetBalance(balanceRequestEvent.getSymbol());
-        simpleApplicationEventMulticaster.multicastEvent(new AccountInfoEvent(this, balanceRequestEvent.getSymbol().toUpperCase(Locale.ROOT), "free=" + assetBalance.getFree() + " locked=" + assetBalance.getLocked()));
+        final AssetBalance assetBalance = getAssetBalance(balanceRequestEvent.getSymbol());
+        simpleApplicationEventMulticaster.multicastEvent(new AccountInfoEvent(this, balanceRequestEvent.getSymbol(), "free=" + assetBalance.getFree() + " locked=" + assetBalance.getLocked()));
 
+    }
+
+
+    @EventListener
+    public void listenAssetInfoRequest(AssetInfoRequestEvent assetInfoRequestEvent) {
+        final Asset asset = assetInfoRequestEvent.getAsset();
+        final TickerStatistics stats = binanceApiRestClient.get24HrPriceStatistics(asset.name());
+        simpleApplicationEventMulticaster.multicastEvent(new AssetInfoResponseEvent(this,
+                asset,
+                stats.getLastPrice(),
+                stats.getVolume(),
+                stats.getLowPrice(),
+                stats.getHighPrice(),
+                stats.getWeightedAvgPrice()
+        ));
     }
 
 }

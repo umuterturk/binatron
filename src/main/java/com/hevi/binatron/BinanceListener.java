@@ -2,6 +2,7 @@ package com.hevi.binatron;
 
 import com.binance.api.client.BinanceApiRestClient;
 import com.binance.api.client.BinanceApiWebSocketClient;
+import com.hevi.binatron.configuration.TradingSymbols;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -20,12 +21,14 @@ public class BinanceListener {
     ApplicationState applicationState;
 
     final BinanceApiRestClient binanceApiRestClient;
+    final TradingSymbols tradingSymbols;
 
-    public BinanceListener(Broker broker, BinanceApiWebSocketClient binanceApiWebSocketClient, ApplicationState applicationState, BinanceApiRestClient binanceApiRestClient) {
+    public BinanceListener(Broker broker, BinanceApiWebSocketClient binanceApiWebSocketClient, ApplicationState applicationState, BinanceApiRestClient binanceApiRestClient, TradingSymbols tradingSymbols) {
         this.broker = broker;
         this.binanceApiWebSocketClient = binanceApiWebSocketClient;
         this.applicationState = applicationState;
         this.binanceApiRestClient = binanceApiRestClient;
+        this.tradingSymbols = tradingSymbols;
     }
 
     @PostConstruct
@@ -38,8 +41,8 @@ public class BinanceListener {
         ForkJoinPool.commonPool().execute(() -> {
             while (true) {
                 try {
-                    broker.process(binanceApiRestClient.getPrice("BNBUSDT").getPrice());
-                }catch (Exception e){
+                    broker.process(binanceApiRestClient.getPrice(tradingSymbols.compound()).getPrice());
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
                 try {
